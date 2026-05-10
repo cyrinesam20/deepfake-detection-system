@@ -243,3 +243,6 @@ __marimo__/
 FaceForensics/dataset_sample/
 *.mp4
 *.zip
+
+
+results/models/
