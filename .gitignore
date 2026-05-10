@@ -27,6 +27,8 @@ models/*.onnx
 
 # MLflow
 mlruns/
+mlflow.db
+*.db
 
 # IDE
 .vscode/
