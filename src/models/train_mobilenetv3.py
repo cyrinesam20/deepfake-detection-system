@@ -1,0 +1,213 @@
+"""
+Entraînement MobileNetV3-Large pour détection de deepfakes
+Avec MLflow tracking
+"""
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import models
+from pathlib import Path
+import mlflow
+import mlflow.pytorch
+import time
+from sklearn.metrics import classification_report
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from dataset import get_dataloaders, CATEGORIES
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+MODEL_NAME = "MobileNetV3-Large"
+EXPERIMENT_NAME = "Deepfake-Detection"
+
+EPOCHS = 15
+BATCH_SIZE = 16
+LR = 1e-3
+STEP_SIZE = 5
+GAMMA = 0.5
+NUM_CLASSES = 5
+
+SAVE_DIR = Path("../../results/models")
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
+SAVE_PATH = SAVE_DIR / "mobilenetv3_best.pth"
+
+DEVICE = torch.device("cpu")
+print(f"🖥️  Device : {DEVICE}")
+
+
+# ============================================================
+# MODÈLE
+# ============================================================
+def build_model():
+    """MobileNetV3-Large pré-entraîné ImageNet, fine-tuning couche finale"""
+    model = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
+
+    # Geler toutes les couches
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Remplacer le classifier final (index 3 = dernière Linear)
+    in_features = model.classifier[3].in_features
+    model.classifier[3] = nn.Linear(in_features, NUM_CLASSES)
+
+    # Débloquer le classifier
+    for param in model.classifier.parameters():
+        param.requires_grad = True
+
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"📊 Paramètres total     : {total_params:,}")
+    print(f"📊 Paramètres entraînés : {trainable_params:,}")
+
+    return model
+
+
+# ============================================================
+# TRAIN / EVAL
+# ============================================================
+def train_one_epoch(model, loader, optimizer, criterion):
+    model.train()
+    total_loss, correct, total = 0, 0, 0
+
+    for images, labels in loader:
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        preds = outputs.argmax(dim=1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
+
+    return total_loss / len(loader), correct / total
+
+
+def evaluate(model, loader, criterion):
+    model.eval()
+    total_loss, correct, total = 0, 0, 0
+    all_preds, all_labels = [], []
+
+    with torch.no_grad():
+        for images, labels in loader:
+            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+            total_loss += loss.item()
+            preds = outputs.argmax(dim=1)
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    return total_loss / len(loader), correct / total, all_preds, all_labels
+
+
+# ============================================================
+# MAIN
+# ============================================================
+def main():
+    print("=" * 60)
+    print(f"🚀 Entraînement : {MODEL_NAME}")
+    print("=" * 60)
+
+    train_loader, val_loader, test_loader = get_dataloaders(batch_size=BATCH_SIZE)
+
+    model = build_model().to(DEVICE)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.classifier.parameters(), lr=LR)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+
+    mlflow.set_tracking_uri("sqlite:///C:/Users/DELL/Desktop/IRM_2/Semestre2/deepfake-detection-system/mlflow.db")
+    mlflow.set_experiment(EXPERIMENT_NAME)
+
+    with mlflow.start_run(run_name=MODEL_NAME):
+
+        mlflow.log_params({
+            "model": MODEL_NAME,
+            "epochs": EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "learning_rate": LR,
+            "optimizer": "Adam",
+            "scheduler": f"StepLR(step={STEP_SIZE}, gamma={GAMMA})",
+            "num_classes": NUM_CLASSES,
+            "device": str(DEVICE)
+        })
+
+        best_val_acc = 0.0
+        start_time = time.time()
+
+        for epoch in range(1, EPOCHS + 1):
+            epoch_start = time.time()
+
+            train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion)
+            val_loss, val_acc, _, _ = evaluate(model, val_loader, criterion)
+            scheduler.step()
+
+            epoch_time = time.time() - epoch_start
+            current_lr = scheduler.get_last_lr()[0]
+
+            mlflow.log_metrics({
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "learning_rate": current_lr
+            }, step=epoch)
+
+            print(f"Epoch [{epoch:02d}/{EPOCHS}] "
+                  f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
+                  f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | "
+                  f"LR: {current_lr:.6f} | "
+                  f"Time: {epoch_time:.1f}s")
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'val_acc': val_acc,
+                    'val_loss': val_loss,
+                    'model_name': MODEL_NAME
+                }, SAVE_PATH)
+                print(f"   💾 Meilleur modèle sauvegardé (val_acc={val_acc:.4f})")
+
+        total_time = time.time() - start_time
+
+        print("\n📊 Évaluation finale sur Test Set...")
+        checkpoint = torch.load(SAVE_PATH)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        test_loss, test_acc, test_preds, test_labels = evaluate(model, test_loader, criterion)
+
+        print(f"\n🎯 RÉSULTATS FINAUX - {MODEL_NAME}")
+        print("=" * 60)
+        print(f"   Best Val Accuracy : {best_val_acc:.4f} ({best_val_acc*100:.2f}%)")
+        print(f"   Test Accuracy     : {test_acc:.4f} ({test_acc*100:.2f}%)")
+        print(f"   Temps total       : {total_time/60:.1f} minutes")
+        print("=" * 60)
+        print("\n📋 Classification Report :")
+        print(classification_report(test_labels, test_preds, target_names=CATEGORIES))
+
+        mlflow.log_metrics({
+            "best_val_acc": best_val_acc,
+            "test_acc": test_acc,
+            "test_loss": test_loss,
+            "training_time_minutes": total_time / 60
+        })
+
+        mlflow.log_param("model_save_path", str(SAVE_PATH))
+        print(f"\n✅ Run MLflow terminé ! Voir http://127.0.0.1:5000")
+
+
+if __name__ == "__main__":
+    main()

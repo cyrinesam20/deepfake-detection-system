@@ -10,26 +10,25 @@
 
 | Métrique              | Valeur        |
 |-----------------------|---------------|
-| **Total images**      | 12,869 images |
-| **Catégories**        | 6             |
-| **Moyenne/catégorie** | 2,145 images  |
+| **Total images**      | 10,900 images |
+| **Catégories**        | 5             |
+| **Moyenne/catégorie** | 2,180 images  |
 
 ### Distribution par Catégorie
 
 | Catégorie      | Nombre | Pourcentage |
 |----------------|--------|-------------|
-| Real           | 1979   |    15.4%    |
-| Actors         | 3828   |    29.7%    |
-| DeepFakes      | 1979   |    15.4%    |
-| Face2Face      | 1979   |    15.4%    |
-| FaceSwap       | 1552   |    12.1%    |
-| NeuralTextures | 1552   |    12.1%    |
+| Real           | 1979   |    18.2%    |
+| DeepFakes      | 2510   |    23.0%    |
+| Face2Face      | 2509   |    23.0%    |
+| FaceSwap       | 1951   |    17.9%    |
+| NeuralTextures | 1951   |    17.9%    |
 
 ---
 
 ## ✅ Observations Clés
 
-1. **Dataset équilibré** : Toutes catégories ≈  2,145 images
+1. **Dataset équilibré** : Toutes catégories ≈  2,180 images
 2. **Résolutions variables** : ~800-1200 pixels
 3. **Qualité satisfaisante** : Aucune image corrompue
 4. **Prêt pour preprocessing**
@@ -52,9 +51,9 @@
 3. Normalisation ImageNet
 
 ### Split Proposé
-- Train : 70% ( 9,008 images)
-- Val : 20% (2,573 images)
-- Test : 10% (1,286 images)
+- Train : 70% (7,629 images)
+- Val : 20% (2,180 images)
+- Test : 10% (1,090 images)
 
 ---
 

@@ -1,3 +1,37 @@
+# Créer/modifier .gitignore
+notepad .gitignore
+```
+
+**Ajouter ces lignes :**
+```
+# Virtual Environment
+venv1/
+venv_deepfake/
+*.pyc
+__pycache__/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data (trop lourd pour Git)
+data/raw/
+data/processed/
+*.jpg
+*.png
+*.mp4
+
+# Models (trop lourd)
+models/*.pth
+models/*.onnx
+
+# MLflow
+mlruns/
+
+# IDE
+.vscode/
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -137,9 +171,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
-.venv
 env/
-venv/
 ENV/
 env.bak/
 venv.bak/
